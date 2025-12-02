@@ -74,7 +74,6 @@
       <ol id="leaderList" style="padding-left:18px; margin:0;">
         <li>Loading...</li>
       </ol>
-      <div style="font-size:12px; color:#666; margin-top:8px;">Note: To enable global leaderboard, create a Supabase project and set its URL/anon key in the script below or as Netlify env vars.</div>
     </div>
     <script>
       const rows = 20;
@@ -170,6 +169,14 @@
 
         cell.classList.add("revealed", "safe");
         cell.textContent = mineCount > 0 ? mineCount : "";
+        // Update the leaderboard score input to reflect cleared (revealed safe) tiles
+        try {
+          const cleared = document.querySelectorAll('.cell.safe.revealed').length;
+          const scoreInput = document.getElementById('playerScore');
+          if (scoreInput) scoreInput.value = cleared;
+        } catch (e) {
+          // ignore DOM access errors
+        }
       }
 
       function revealAllMines() {
@@ -183,6 +190,14 @@
         // Make sure the safe one looks safe
         if (firstSafeIndex !== null) {
           cells[firstSafeIndex].classList.add("safe");
+        }
+        // When the game ends, update the score input with cleared tiles
+        try {
+          const cleared = document.querySelectorAll('.cell.safe.revealed').length;
+          const scoreInput = document.getElementById('playerScore');
+          if (scoreInput) scoreInput.value = cleared;
+        } catch (e) {
+          // ignore DOM access errors
         }
       }
 
