@@ -63,12 +63,8 @@
     <!-- Leaderboard UI -->
     <div id="leaderboard" style="margin-top:20px; width: 320px; text-align: left;">
       <h3 style="margin:6px 0">Global Leaderboard</h3>
-      <div style="display:flex; gap:8px; margin-bottom:8px;">
-        <input id="playerName" placeholder="Your name" style="flex:1; padding:6px" />
-        <input id="playerScore" type="number" placeholder="Score" style="width:90px; padding:6px" />
-      </div>
       <div style="display:flex; gap:8px; margin-bottom:12px;">
-        <button id="submitScoreBtn">Submit Score</button>
+        <input id="playerName" placeholder="Your name" style="flex:1; padding:6px" />
         <button id="refreshLeaderboardBtn">Refresh</button>
       </div>
       <ol id="leaderList" style="padding-left:18px; margin:0;">
@@ -169,13 +165,19 @@
 
         cell.classList.add("revealed", "safe");
         cell.textContent = mineCount > 0 ? mineCount : "";
-        // Update the leaderboard score input to reflect cleared (revealed safe) tiles
+        // After revealing, check if any safe cells remain; if none, player cleared all safe tiles (win)
         try {
-          const cleared = document.querySelectorAll('.cell.safe.revealed').length;
-          const scoreInput = document.getElementById('playerScore');
-          if (scoreInput) scoreInput.value = cleared;
+          const remainingSafe = Array.from(cells).filter(c => c.dataset.isMine === 'false' && !c.classList.contains('revealed')).length;
+          if (remainingSafe === 0) {
+            statusEl.textContent = 'You cleared all safe tiles!';
+            disableBoard();
+            // auto-submit final score
+            setTimeout(() => {
+              if (typeof autoSubmitScore === 'function') autoSubmitScore();
+            }, 50);
+          }
         } catch (e) {
-          // ignore DOM access errors
+          // ignore DOM errors
         }
       }
 
@@ -191,14 +193,10 @@
         if (firstSafeIndex !== null) {
           cells[firstSafeIndex].classList.add("safe");
         }
-        // When the game ends, update the score input with cleared tiles
-        try {
-          const cleared = document.querySelectorAll('.cell.safe.revealed').length;
-          const scoreInput = document.getElementById('playerScore');
-          if (scoreInput) scoreInput.value = cleared;
-        } catch (e) {
-          // ignore DOM access errors
-        }
+        // When the game ends (boom), auto-submit the current score
+        setTimeout(() => {
+          if (typeof autoSubmitScore === 'function') autoSubmitScore();
+        }, 50);
       }
 
       function disableBoard() {
@@ -220,23 +218,18 @@
       const supabase = hasSupabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
       const leaderListEl = document.getElementById("leaderList");
-      const submitScoreBtn = document.getElementById("submitScoreBtn");
       const refreshLeaderboardBtn = document.getElementById("refreshLeaderboardBtn");
       const playerNameInput = document.getElementById("playerName");
-      const playerScoreInput = document.getElementById("playerScore");
 
       function getLocalScoreGuess() {
-        // default score: number of revealed safe cells
         try {
-          return Array.from(document.querySelectorAll('.cell.safe.revealed')).length || 0;
+          return document.querySelectorAll('.cell.safe.revealed').length || 0;
         } catch (e) { return 0; }
       }
 
       async function fetchLeaderboard() {
         if (!hasSupabase) {
           leaderListEl.innerHTML = "<li>Supabase keys not configured.</li>";
-          // still update default score
-          playerScoreInput.value = getLocalScoreGuess();
           return;
         }
         leaderListEl.innerHTML = "<li>Loading...</li>";
@@ -249,33 +242,37 @@
           if (error) throw error;
           if (!data || data.length === 0) {
             leaderListEl.innerHTML = "<li>No scores yet.</li>";
-            playerScoreInput.value = getLocalScoreGuess();
             return;
           }
           leaderListEl.innerHTML = data.map(row => `<li>${escapeHtml(row.name)} — ${row.score}</li>`).join('');
-          playerScoreInput.value = getLocalScoreGuess();
         } catch (err) {
           leaderListEl.innerHTML = `<li>Error loading leaderboard: ${escapeHtml(err.message || err)}</li>`;
         }
       }
 
-      async function submitScore() {
-        const name = (playerNameInput.value || '').trim();
-        const score = parseInt(playerScoreInput.value, 10);
-        if (!name) return alert('Enter a name');
-        if (Number.isNaN(score)) return alert('Enter a numeric score');
-        if (!hasSupabase) return alert('Supabase not configured. See instructions below.');
-        submitScoreBtn.disabled = true;
+      async function submitScore(name, score) {
+        if (!hasSupabase) {
+          console.warn('Supabase not configured; skipping submit');
+          return;
+        }
         try {
           const { error } = await supabase.from('leaderboard').insert([{ name, score }]);
           if (error) throw error;
-          playerScoreInput.value = '';
           await fetchLeaderboard();
         } catch (err) {
-          alert('Submit failed: ' + (err.message || err));
-        } finally {
-          submitScoreBtn.disabled = false;
+          console.error('Submit failed:', err.message || err);
         }
+      }
+
+      // Auto-submit the player's score (cleared tiles) on game end.
+      async function autoSubmitScore() {
+        const name = (playerNameInput.value || 'Anonymous').trim() || 'Anonymous';
+        const score = getLocalScoreGuess();
+        // mark name input readonly after submit to avoid multiple submissions
+        try {
+          playerNameInput.disabled = true;
+        } catch (e) {}
+        await submitScore(name, score);
       }
 
       function escapeHtml(s) {
@@ -287,7 +284,6 @@
           .replace(/'/g, '&#039;');
       }
 
-      submitScoreBtn.addEventListener('click', submitScore);
       refreshLeaderboardBtn.addEventListener('click', fetchLeaderboard);
       // Fetch on load
       fetchLeaderboard();
