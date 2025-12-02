@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Minesweeper (eazy mode)</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-top: 20px;
+      }
+
+      #status {
+        margin-bottom: 10px;
+        font-weight: bold;
+      }
+
+      #board {
+        display: grid;
+        grid-template-columns: repeat(20, 30px);
+        grid-auto-rows: 30px;
+        gap: 2px;
+      }
+
+      .cell {
+        width: 30px;
+        height: 30px;
+        background: #ccc;
+        border: 1px solid #999;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        cursor: pointer;
+        font-size: 16px;
+        user-select: none;
+      }
+
+      .cell.revealed {
+        background: #eee;
+        cursor: default;
+      }
+
+      .cell.mine {
+        background: #e57373;
+        color: #000;
+      }
+
+      .cell.safe {
+        background: #aed581;
+      }
+
+      .cell.disabled {
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status">Click any tile to start.</div>
+    <div id="board"></div>
+
+    <script>
+      const rows = 20;
+      const cols = 20;
+
+      const boardEl = document.getElementById("board");
+      const statusEl = document.getElementById("status");
+
+      let firstClickDone = false; 
+      let firstSafeIndex = null;
+
+      // Create grid cells
+      const cells = [];
+      for (let i = 0; i < rows * cols; i++) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.dataset.index = i;
+        cell.addEventListener("click", onCellClick);
+        boardEl.appendChild(cell);
+        cells.push(cell);
+      }
+
+      function indexToRC(index) {
+        return {
+          r: Math.floor(index / cols),
+          c: index % cols,
+        };
+      }
+
+      function rcToIndex(r, c) {
+        return r * cols + c;
+      }
+
+      function getNeighbors(index) {
+        const { r, c } = indexToRC(index);
+        const neighbors = [];
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            const nr = r + dr;
+            const nc = c + dc;
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+              neighbors.push(rcToIndex(nr, nc));
+            }
+          }
+        }
+        return neighbors;
+      }
+
+      function onCellClick(e) {
+        const cell = e.currentTarget;
+        const index = parseInt(cell.dataset.index, 10);
+
+        // First click: mark this as safe, everything else as mines
+        if (!firstClickDone) {
+          firstClickDone = true;
+          firstSafeIndex = index;
+
+          // Mark all cells except this one as mines (internally)
+          for (let i = 0; i < cells.length; i++) {
+            if (i !== firstSafeIndex) {
+              cells[i].dataset.isMine = "true";
+            } else {
+              cells[i].dataset.isMine = "false";
+            }
+          }
+
+          revealSafeCell(index);
+          statusEl.textContent =
+            "Crazy luck!";
+          return;
+        }
+
+        // After the first click, any non-safe tile is a mine
+        if (cell.dataset.isMine === "true") {
+          revealAllMines();
+          statusEl.textContent = "Boom! You clicked a mine. Game over.";
+          disableBoard();
+        } else {
+          // This should only be the firstSafeIndex if clicked again
+          revealSafeCell(index);
+        }
+      }
+
+      function revealSafeCell(index) {
+        const cell = cells[index];
+        if (cell.classList.contains("revealed")) return;
+
+        const neighbors = getNeighbors(index);
+        // Count mines around this cell. Since all others are mines:
+        // adjacent mines = number of neighbors.
+        const mineCount = neighbors.length;
+
+        cell.classList.add("revealed", "safe");
+        cell.textContent = mineCount > 0 ? mineCount : "";
+      }
+
+      function revealAllMines() {
+        for (let i = 0; i < cells.length; i++) {
+          const cell = cells[i];
+          if (cell.dataset.isMine === "true") {
+            cell.classList.add("revealed", "mine");
+            cell.textContent = "💣";
+          }
+        }
+        // Make sure the safe one looks safe
+        if (firstSafeIndex !== null) {
+          cells[firstSafeIndex].classList.add("safe");
+        }
+      }
+
+      function disableBoard() {
+        for (const cell of cells) {
+          cell.classList.add("disabled");
+        }
+      }
+    </script>
+  </body>
+</html>
