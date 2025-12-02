@@ -60,6 +60,22 @@
     <div id="status">Click any tile to start.</div>
     <div id="board"></div>
 
+    <!-- Leaderboard UI -->
+    <div id="leaderboard" style="margin-top:20px; width: 320px; text-align: left;">
+      <h3 style="margin:6px 0">Global Leaderboard</h3>
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <input id="playerName" placeholder="Your name" style="flex:1; padding:6px" />
+        <input id="playerScore" type="number" placeholder="Score" style="width:90px; padding:6px" />
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <button id="submitScoreBtn">Submit Score</button>
+        <button id="refreshLeaderboardBtn">Refresh</button>
+      </div>
+      <ol id="leaderList" style="padding-left:18px; margin:0;">
+        <li>Loading...</li>
+      </ol>
+      <div style="font-size:12px; color:#666; margin-top:8px;">Note: To enable global leaderboard, create a Supabase project and set its URL/anon key in the script below or as Netlify env vars.</div>
+    </div>
     <script>
       const rows = 20;
       const cols = 20;
@@ -175,6 +191,91 @@
           cell.classList.add("disabled");
         }
       }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script>
+    <script>
+      // --- Configuration: replace these with your Supabase project's values ---
+      // You can set these directly here (development) or add them as Netlify environment variables
+      // and substitute during your build. For a static HTML site, putting the anon key in the client
+      // is acceptable: it's the public anon key intended for client usage.
+      const SUPABASE_URL = "https://htxdmxbzxdggjwjeyvvv.supabase.co"; // e.g. https://abcd1234.supabase.co
+      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0eGRteGJ6eGRnZ2p3amV5dnZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2OTIxODMsImV4cCI6MjA4MDI2ODE4M30.NdJ-GhhaB2QdedHCoe1REn3KBU4DAtyQNu_p-liAKQg";
+
+      const hasSupabase = SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_URL.indexOf("REPLACE") === -1;
+      const supabase = hasSupabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+      const leaderListEl = document.getElementById("leaderList");
+      const submitScoreBtn = document.getElementById("submitScoreBtn");
+      const refreshLeaderboardBtn = document.getElementById("refreshLeaderboardBtn");
+      const playerNameInput = document.getElementById("playerName");
+      const playerScoreInput = document.getElementById("playerScore");
+
+      function getLocalScoreGuess() {
+        // default score: number of revealed safe cells
+        try {
+          return Array.from(document.querySelectorAll('.cell.safe.revealed')).length || 0;
+        } catch (e) { return 0; }
+      }
+
+      async function fetchLeaderboard() {
+        if (!hasSupabase) {
+          leaderListEl.innerHTML = "<li>Supabase keys not configured.</li>";
+          // still update default score
+          playerScoreInput.value = getLocalScoreGuess();
+          return;
+        }
+        leaderListEl.innerHTML = "<li>Loading...</li>";
+        try {
+          const { data, error } = await supabase
+            .from('leaderboard')
+            .select('id, name, score, created_at')
+            .order('score', { ascending: false })
+            .limit(10);
+          if (error) throw error;
+          if (!data || data.length === 0) {
+            leaderListEl.innerHTML = "<li>No scores yet.</li>";
+            playerScoreInput.value = getLocalScoreGuess();
+            return;
+          }
+          leaderListEl.innerHTML = data.map(row => `<li>${escapeHtml(row.name)} — ${row.score}</li>`).join('');
+          playerScoreInput.value = getLocalScoreGuess();
+        } catch (err) {
+          leaderListEl.innerHTML = `<li>Error loading leaderboard: ${escapeHtml(err.message || err)}</li>`;
+        }
+      }
+
+      async function submitScore() {
+        const name = (playerNameInput.value || '').trim();
+        const score = parseInt(playerScoreInput.value, 10);
+        if (!name) return alert('Enter a name');
+        if (Number.isNaN(score)) return alert('Enter a numeric score');
+        if (!hasSupabase) return alert('Supabase not configured. See instructions below.');
+        submitScoreBtn.disabled = true;
+        try {
+          const { error } = await supabase.from('leaderboard').insert([{ name, score }]);
+          if (error) throw error;
+          playerScoreInput.value = '';
+          await fetchLeaderboard();
+        } catch (err) {
+          alert('Submit failed: ' + (err.message || err));
+        } finally {
+          submitScoreBtn.disabled = false;
+        }
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      submitScoreBtn.addEventListener('click', submitScore);
+      refreshLeaderboardBtn.addEventListener('click', fetchLeaderboard);
+      // Fetch on load
+      fetchLeaderboard();
     </script>
   </body>
 </html>
